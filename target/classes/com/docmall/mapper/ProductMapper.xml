@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.docmall.mapper.ProductMapper">
+
+<!-- 1차 카테고리 목록 -->
+<select id="getCategoryList" resultType="com.docmall.domain.CategoryVO">
+	SELECT  
+		CATE_CODE,  
+		CATE_CODE_PRT, 
+		CATE_NAME
+	FROM 
+		CATEGORY_TBL
+	WHERE 
+		CATE_CODE_PRT IS NULL
+</select>
+
+<!-- 1차 카테고리를 참조하는 2차 카테고리 -->
+<select id="getSubCategoryList" resultType="com.docmall.domain.CategoryVO">
+	SELECT  
+		CATE_CODE,  
+		CATE_CODE_PRT, 
+		CATE_NAME
+	FROM 
+		CATEGORY_TBL
+	WHERE CATE_CODE_PRT = #{CATE_CODE}
+</select>
+
+<!-- 검색조건 쿼리. [제목 or 작성자]선택.  value="TW" -->
+	<!-- typeArr: 파라미터타입의 Criteria클래스의 메서드를 가리킴. 검색종류(타입)의 값을 참조하게 됨. [제목 or 작성자]선택.  value="TW"  -->
+	<sql id="criteria">
+		<trim prefix="(" suffix=") AND " prefixOverrides="OR">
+			<foreach collection="cri.typeArr" item="type">
+				<trim prefix="OR">
+					<choose>
+						<when test="type == 'N'.toString()">
+							PDT_NAME like '%' || #{cri.keyword} || '%'
+						</when>
+						<when test="type == 'C'.toString()">
+							PDT_COMPANY like '%' || #{cri.keyword} || '%'
+						</when>
+					</choose>
+				</trim>
+			</foreach>
+		</trim>
+	</sql>
+
+<!-- 2차 카테고리를 참조하는 상품목록. -->
+<select id="getProductListbysubCategory" resultType="com.docmall.domain.ProductVO">
+	<![CDATA[
+		SELECT RN, PDT_NUM, CATE_CODE, CATE_CODE_PRT, PDT_NAME, PDT_PRICE, PDT_DISCOUNT, pdt_dis_price, PDT_COMPANY, PDT_DETAIL, PDT_IMG_FOLDER, PDT_IMG, PDT_AMOUNT, PDT_BUY, PDT_DATE_SUB, PDT_DATE_UP
+		FROM (
+		    SELECT  /*+ INDEX_DESC(PRODUCT_TBL PK_PRODUCT_NUM)*/ ROWNUM RN, PDT_NUM, CATE_CODE, CATE_CODE_PRT, PDT_NAME, PDT_PRICE, PDT_DISCOUNT, pdt_dis_price, PDT_COMPANY, PDT_DETAIL, PDT_IMG_FOLDER, PDT_IMG, PDT_AMOUNT, PDT_BUY, PDT_DATE_SUB, PDT_DATE_UP
+		FROM PRODUCT_TBL
+		    WHERE  CATE_CODE = #{cate_code} 
+		    AND PDT_BUY = 'Y' 
+		    AND 
+		]]>    
+		 <include refid="criteria"></include> <!-- 검색 기능을 사용하지 않을 것이기에, 참조되지 않는다. -->
+		 
+		<![CDATA[ 
+		   
+		         ROWNUM <= #{cri.pageNum} * #{cri.amount}
+		)
+		WHERE RN > (#{cri.pageNum}-1) * #{cri.amount}
+		]]> <!-- mapper에 규정된 메소드의 파라미터가 cri 1개라면, 앞에 cri.을 붙일 필요가 없는데 2개라서 @Param이 붙었다면, cri.를 붙여줘야 한다 -->
+</select>
+
+<!-- 2차 카테고리를 참조하는 상품목록의 개수 -->
+<select id="getProductCountbysubCategory" resultType="int">
+	SELECT count(*) FROM PRODUCT_TBL 
+	WHERE CATE_CODE = #{cate_code} 
+	AND PDT_BUY = 'Y' 
+	AND 
+		
+		<include refid="criteria"></include>  <!-- getProductCountbysubCategory에서는 int형 파라미터밖에 없는데
+								(검색 기능을 안써도 냅둔다면)	criteria에서는 cri.keyword를 사용하기 때문에 에러난다. 
+								안 써도 검색 기능을 냅둬야 한다면, mapper인터페이스의 파라미터에 Cri를 넣어줘야 한다.-->
+		
+		PDT_NUM > 0	
+</select>
+
+<!--상품상세정보 -->
+<select id="getProductDetail" resultType="com.docmall.domain.ProductVO">
+	SELECT 
+		PDT_NUM, 		CATE_CODE, 		CATE_CODE_PRT, 
+		PDT_NAME, 		PDT_PRICE, 		PDT_DISCOUNT, 
+		pdt_dis_price,
+		PDT_COMPANY, 	PDT_DETAIL, 	PDT_IMG_FOLDER, 
+		PDT_IMG, 		PDT_AMOUNT, 	PDT_BUY, 
+		PDT_DATE_SUB, 	PDT_DATE_UP 
+	FROM
+		PRODUCT_TBL
+	WHERE 
+		PDT_NUM = #{pdt_num}
+</select>
+
+</mapper>

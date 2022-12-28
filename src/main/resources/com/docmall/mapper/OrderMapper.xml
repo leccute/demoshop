@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.docmall.mapper.OrderMapper">
+
+<select id="getOrderSequence" resultType="Long">
+	SELECT SEQ_ODR_CODE.NEXTVAL FROM DUAL
+</select>
+
+<!-- 주문 정보 저장하기 -->
+<insert id="orderSave" parameterType="com.docmall.domain.OrderVO">
+	<!-- 현재 ord_code가 null값이기 때문에 selectKey를 먼저 실행해서 그 값을 넣어주겠다, 따로 메소드로 뺏다. (위에) -->
+	<!-- 
+	<selectKey keyProperty="odr_code" order="BEFORE" resultType="long">
+		SELECT SEQ_ODR_CODE.NEXTVAL FROM DUAL
+	</selectKey>
+	 -->
+	INSERT INTO ORDER_TBL (
+		 odr_code, 		mem_id, 		odr_name, 
+		 odr_zipcode, 	odr_addr, 		odr_addr_d, 
+		 odr_phone, 	odr_total_price
+	 )
+	 VALUES(
+		 #{odr_code}, 		#{mem_id}, 			#{odr_name},
+		 #{odr_zipcode}, 	#{odr_addr}, 		#{odr_addr_d},
+		 #{odr_phone}, 		#{odr_total_price}
+	 )
+</insert>
+
+<!-- 주문상세 저장하기. 장바구니 테이블의 데이터를 이동해서 주문 상세 테이블에 저장한다. 장바구니 구매-->
+<insert id="orderDetailSave">
+	insert into ORDER_DETAIL_TBL(
+		odr_code, PDT_NUM, ODR_AMOUNT, ODR_PRICE
+	)
+	select 
+		#{odr_code}, c.pdt_num, c.cart_amount, p.pdt_price * c.cart_amount
+	from 
+		cart_tbl c inner join product_tbl p
+	on 
+		c.pdt_num = p.pdt_num
+	where 
+		c.mem_id = #{mem_id}
+</insert>
+
+<!-- 주문상세 저장하기. 바로 구매 데이터를 주문 상세 테이블에 저장한다.  -->
+<insert id="orderDirectDetailSave">
+	INSERT INTO ORDER_DETAIL_TBL(
+		odr_code, pdt_num, odr_amount, odr_price
+	)
+	VALUES(
+		#{odr_code}, #{pdt_num}, #{odr_amount}, #{odr_price}
+	)
+</insert>
+
+<!-- 결제정보 저장하기 -->
+<insert id="paymentSave">
+	INSERT INTO PAYMENT_TBL (
+		PAY_CODE, 
+		ODR_CODE, 
+		MEM_ID, 
+		PAY_METHOD, 
+		PAY_TOT_PRICE, 
+		PAY_NOBANK_PRICE,  
+		PAY_NOBANK_USER, 
+		PAY_NOBANK
+	) 
+	VALUES (
+		seq_payment_code.nextval, 		
+		#{odr_code}, 		
+		#{mem_id},
+		#{pay_method},		
+		#{pay_tot_price}, 
+		#{pay_nobank_price},
+		#{pay_nobank_user},
+		#{pay_nobank}
+	)
+		
+</insert>
+
+<!-- #{}컬럼에 별칭을 두지 않으면, 값이 이름이 된다. 즉, #{cart_amount}로만 해두고, 그 값이 1이면 컬럼명이 1인 곳을 찾으려고 한다  -->
+<select id="directOrder" resultType="com.docmall.domain.CartVOList">
+	SELECT
+		pdt_img_folder, 		
+		PDT_IMG, 									
+		PDT_PRICE, 
+    	#{cart_amount} as CART_AMOUNT, 			
+    	PDT_PRICE * #{cart_amount} as SALES_PRICE, 	
+    	#{mem_id} as MEM_ID,
+    	pdt_num, 				
+    	pdt_name 								
+    	
+FROM 
+	product_tbl 
+WHERE
+	pdt_num = #{pdt_num}
+</select>
+
+<!-- 진행 주문 건수 -->
+<select id="getOrderProcessCount" resultType="int">
+<![CDATA[
+SELECT 
+	COUNT(*)
+FROM 
+	ORDER_TBL
+WHERE 
+	MEM_ID = #{mem_id}
+AND 
+	ODR_STATUS <> '배송완료'
+]]>
+</select>
+
+<!-- 주문 내역 -->
+<select id="getOrderList" resultType="com.docmall.domain.OrderVO">
+<![CDATA[
+SELECT
+	RN, odr_code, odr_date, mem_id, odr_name, odr_total_price, odr_status
+FROM(
+	SELECT /*+ INDEX_DESC(ord PK_ORDER_CODE) */
+    	ROWNUM RN, ord.odr_code, ord.odr_date, ord.mem_id, ord.odr_name, ord.odr_total_price, ord.odr_status 
+	FROM 
+		order_tbl ord 
+	WHERE
+		ord.mem_id = #{mem_id}
+	AND
+		ROWNUM <= #{cri.pageNum} * #{cri.amount}
+	)
+WHERE 
+	RN > (#{cri.pageNum} - 1) * #{cri.amount}
+]]>
+</select>
+
+<select id="getOrderTotalCount" resultType="int">
+	SELECT COUNT(*) 
+	FROM 
+		order_tbl 
+	WHERE
+		mem_id = #{mem_id}
+</select>
+
+<!-- DB컬럼명과 VO클래스의 필드명이 다를 경우에도, 이 과정을 거쳐줘야 한다.  property:필드명
+지금은 필드명과 DB컬럼명이 같은데도 이 작업을 하는 이유는, 쿼리가 조인이었을 때 결과를 받는 방법 2) 기존 VO 클래스를 이용한다. 이걸 위함이다. -->
+<resultMap type="com.docmall.domain.OrderDetailVO" id="orderDetailMap">
+	<id property="odr_code" column="odr_code"/>
+	<id property="pdt_num" column="pdt_num"/>
+	<result property="odr_amount" column="odr_amount"/>
+	<result property="odr_price" column="odr_price"/> 
+</resultMap>
+
+<resultMap type="com.docmall.domain.ProductVO" id="productMap">
+	<id property="pdt_num" column="pdt_num"/>
+	<result property="cate_code" column="cate_code"/>
+	<result property="cate_code_prt" column="cate_code_prt"/>
+	<result property="pdt_name" column="pdt_name"/>
+	<result property="pdt_price" column="pdt_price"/>
+	<result property="pdt_discount" column="pdt_discount"/>
+	<result property="pdt_company" column="pdt_company"/>
+	<result property="pdt_detail" column="pdt_detail"/>
+	<result property="pdt_img_folder" column="pdt_img_folder"/>
+	<result property="pdt_img" column="pdt_img"/>
+	<result property="pdt_amount" column="pdt_amount"/>
+	<result property="pdt_buy" column="pdt_buy"/>
+	<result property="pdt_date_sub" column="pdt_date_sub"/>
+	<result property="pdt_date_up" column="pdt_date_up"/>
+</resultMap>
+
+<resultMap type="com.docmall.domain.OrderDetailProductVO" id="orderDetailProductMap">
+	<collection property="orderDetailVO" resultMap="orderDetailMap" />
+	<collection property="productVO" resultMap="productMap" />
+</resultMap>
+
+<!-- 주문 상세 -->
+<select id="getOrderDetailList" resultMap="orderDetailProductMap">
+SELECT 
+	ORD.ODR_CODE, ORD.PDT_NUM, P.PDT_NAME, P.PDT_PRICE, ORD.ODR_AMOUNT, ORD.ODR_PRICE, P.PDT_IMG_FOLDER, P.PDT_IMG
+FROM 
+	ORDER_DETAIL_TBL ORD INNER JOIN PRODUCT_TBL P
+ON 
+	ORD.PDT_NUM = P.PDT_NUM
+WHERE 
+	ORD.ODR_CODE = #{odr_code}
+</select>
+
+</mapper>

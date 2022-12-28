@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.docmall.mapper.AdChartMapper"> 
+
+<!-- 장바구니 - 상품 목록 차트 -->
+<select id="chartCartList" resultType="com.docmall.domain.ChartCartVO">
+SELECT /*+*/
+	p.pdt_name, 
+	SUM(p.pdt_price * c.cart_amount) AS PRICE
+FROM 
+	cart_tbl c INNER JOIN product_tbl p
+ON 
+	c.pdt_num = p.pdt_num
+GROUP BY 
+	p.pdt_name
+ORDER BY
+	p.pdt_name 
+</select>
+
+</mapper>
